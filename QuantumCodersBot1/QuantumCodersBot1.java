@@ -2,105 +2,240 @@ import dev.robocode.tankroyale.botapi.*;
 import dev.robocode.tankroyale.botapi.events.*;
 import dev.robocode.tankroyale.botapi.graphics.Color;
 
-// ------------------------------------------------------------------
-// Crazy
-// ------------------------------------------------------------------
-// A sample bot original made for Robocode by Mathew Nelson.
-//
-// This robot moves in a zigzag pattern while firing at enemies.
-// ------------------------------------------------------------------
 public class QuantumCodersBot1 extends Bot {
 
-    boolean movingForward;
+    boolean peek; 
+    double moveAmount; 
+    
+    private double enemyDistance = 0;
+    private double enemyBearing = 0;
+    private double enemyVelocity = 0;
+    private double enemyHeading = 0;
+    private int moveDirection = 1; 
+    private int turnDirection = 1; 
+    private long lastScanTime = 0;
+    private double previousEnemyBearing = 0;
+    private boolean dodging = false;
 
-    // The main method starts our bot
     public static void main(String[] args) {
-        new Crazy().start();
+        new QuantumCodersBot1().start();
     }
 
-    // Called when a new round is started -> initialize and do some movement
+    
+    QuantumCodersBot1() {
+        super(BotInfo.fromFile("QuantumCodersBot1.json"));
+    }
+
+    
+    @Override
     public void run() {
-        // Set colors
-        setBodyColor(Color.fromRgb(0x00, 0xC8, 0x00));   // lime
-        setTurretColor(Color.fromRgb(0x00, 0x96, 0x32)); // green
-        setRadarColor(Color.fromRgb(0x00, 0x64, 0x64));  // dark cyan
-        setBulletColor(Color.fromRgb(0xFF, 0xFF, 0x64)); // yellow
-        setScanColor(Color.fromRgb(0xFF, 0xC8, 0xC8));   // light red
+        setBodyColor(Color.DARK_GRAY);
+        setTurretColor(Color.BLACK);
+        setRadarColor(Color.RED);
+        setBulletColor(Color.YELLOW);
+        setScanColor(Color.YELLOW);
 
-        // Loop while as long as the bot is running
+        
+        moveAmount = Math.max(getArenaWidth(), getArenaHeight());
+        peek = false;
+
+       
+        setAdjustGunForBodyTurn(true);
+        setAdjustRadarForGunTurn(true);
+
+       
+        turnRight(getDirection() % 90);
+        forward(moveAmount);
+
+      
+        turnRadarRight(360);
+
+     
         while (isRunning()) {
-            // Tell the game we will want to move ahead 40000 -- some large number
-            setForward(40000);
-            movingForward = true;
-            // Tell the game we will want to turn right 90
-            setTurnLeft(90);
-            // At this point, we have indicated to the game that *when we do something*,
-            // we will want to move ahead and turn right. That's what "set" means.
-            // It is important to realize we have not done anything yet!
-            // In order to actually move, we'll want to call a method that takes real time, such as
-            // waitFor.
-            // waitFor actually starts the action -- we start moving and turning.
-            // It will not return until we have finished turning.
-            waitFor(new TurnCompleteCondition(this));
-            // Note: We are still moving ahead now, but the turn is complete.
-            // Now we'll turn the other way...
-            setTurnRight(180);
-            // ... and wait for the turn to finish ...
-            waitFor(new TurnCompleteCondition(this));
-            // ... then the other way ...
-            setTurnLeft(180);
-            // ... and wait for that turn to finish.
-            waitFor(new TurnCompleteCondition(this));
-            // then back to the top to do it all again.
+           
+            if (dodging) {
+                performEvasiveManeuvers();
+            } else if (getTurnNumber() - lastScanTime > 20) {
+               
+                wallFollowingMovement();
+            } else {
+               
+                combatMovement();
+            }
+            
+           
+            turnRadarRight(45);
         }
     }
-
-    // We collided with a wall -> reverse the direction
-    @Override
-    public void onHitWall(HitWallEvent e) {
-        // Bounce off!
-        reverseDirection();
+    
+    
+    private void wallFollowingMovement() {
+        peek = true;
+        forward(moveAmount);
+        peek = false;
+        turnLeft(90);
     }
-
-    // ReverseDirection: Switch from ahead to back & vice versa
-    public void reverseDirection() {
-        if (movingForward) {
-            setBack(40000);
-            movingForward = false;
+    
+    
+    private void combatMovement() {
+        
+        if (getTurnNumber() % 20 == 0) {
+            moveDirection *= -1; 
+        }
+        
+        if (moveDirection == 1) {
+            forward(100);
         } else {
-            setForward(40000);
-            movingForward = true;
+            back(100);
         }
+        
+        
+        double gunTurnAmt = normalizeAngle(enemyBearing - getGunDirection());
+        turnGunRight(gunTurnAmt);
+    }
+    
+    private void performEvasiveManeuvers() {
+        turnDirection *= -1;
+        turnRight(30 * turnDirection);
+        
+        if (moveDirection == 1) {
+            forward(80);
+        } else {
+            back(80);
+        }
+        
+        dodging = false; 
+    }
+    
+    
+    private double normalizeAngle(double angle) {
+        while (angle > 180) angle -= 360;
+        while (angle < -180) angle += 360;
+        return angle;
     }
 
-    // We scanned another bot -> fire!
-    @Override
-    public void onScannedBot(ScannedBotEvent e) {
-        fire(1);
-    }
-
-    // We hit another bot -> back up!
+    
     @Override
     public void onHitBot(HitBotEvent e) {
-        // If we're moving into the other bot, reverse!
-        if (e.isRammed()) {
-            reverseDirection();
+        
+        var bearing = bearingTo(e.getX(), e.getY());
+        if (bearing > -90 && bearing < 90) {
+            back(100);
+        } else { 
+            forward(100);
         }
     }
 
-    // Condition that is triggered when the turning is complete
-    public static class TurnCompleteCondition extends Condition {
-
-        private final IBot bot;
-
-        public TurnCompleteCondition(IBot bot) {
-            this.bot = bot;
+    
+    @Override
+    public void onScannedBot(ScannedBotEvent e) {
+       
+        enemyDistance = distanceTo(e.getX(), e.getY());
+        enemyBearing = bearingTo(e.getX(), e.getY());
+        enemyVelocity = e.getSpeed();
+        enemyHeading = e.getDirection();
+        lastScanTime = getTurnNumber();
+        
+      
+        double bulletPower = calculateOptimalBulletPower(enemyDistance);
+        double bulletSpeed = 20 - 3 * bulletPower;
+        double timeToTarget = enemyDistance / bulletSpeed;
+        
+        double predictedX = e.getX() + Math.sin(Math.toRadians(enemyHeading)) * enemyVelocity * timeToTarget;
+        double predictedY = e.getY() + Math.cos(Math.toRadians(enemyHeading)) * enemyVelocity * timeToTarget;
+        
+      
+        double angleToTarget = Math.toDegrees(Math.atan2(predictedX - getX(), predictedY - getY()));
+        double gunTurnAmt = normalizeAngle(angleToTarget - getGunDirection());
+        
+       
+        turnGunRight(gunTurnAmt);
+        
+        
+        if (Math.abs(gunTurnAmt) < 10) { 
+            fire(bulletPower);
         }
+        
+        
+        double radarTurnAmt = normalizeAngle(getRadarDirection() - (getDirection() + enemyBearing));
+        turnRadarLeft(radarTurnAmt);
+        
+        
+        dodging = false; 
+        
+        
+        if (peek) {
+            rescan();
+        }
+    }
+    
+    
+    private double calculateOptimalBulletPower(double distance) {
+        if (distance < 100) {
+            return 3.0; 
+        } else if (distance < 300) {
+            return 2.0; 
+        } else {
+            return 1.0; 
+        }
+    }
+    
+    @Override
+    public void onHitByBullet(HitByBulletEvent e) {
+        
+        var bearing = calcBearing(e.getBullet().getDirection());
 
-        @Override
-        public boolean test() {
-            // turn is complete when the remainder of the turn is zero
-            return bot.getTurnRemaining() == 0;
+        
+        dodging = true;
+        
+       
+        turnRight(90 - bearing + (Math.random() * 20 - 10)); 
+        moveDirection *= -1; 
+        
+        
+        if (getEnergy() < 20) {
+           
+            back(150);
+        } else {
+            
+            forward(100);
+        }
+    }
+    
+    
+    @Override
+    public void onHitWall(HitWallEvent e) {
+        
+        moveDirection *= -1;
+        turnDirection *= -1;
+        
+        turnRight(90 * turnDirection);
+        
+        if (moveDirection == 1) {
+            forward(100);
+        } else {
+            back(100);
+        }
+    }
+    
+   
+    @Override
+    public void onBotDeath(BotDeathEvent e) {
+      
+        lastScanTime = 0;
+        dodging = false;
+        
+        
+        turnRadarRight(360);
+    }
+    
+    
+    @Override
+    public void onWonRound(WonRoundEvent e) {
+        
+        for (int i = 0; i < 10; i++) {
+            turnRight(360);
+            fire(0.1); 
         }
     }
 }

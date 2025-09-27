@@ -1,2 +1,2 @@
 #!/bin/sh
-java -cp ../lib/* QuantCodersBot.java
+java -cp ../lib/* QuantCodersBot1.java

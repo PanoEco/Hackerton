@@ -9,7 +9,7 @@ import dev.robocode.tankroyale.botapi.graphics.Color;
 //
 // This robot moves in a zigzag pattern while firing at enemies.
 // ------------------------------------------------------------------
-public class QuantumCodersBot1 extends Bot {
+public class Crazy extends Bot {
 
     boolean movingForward;
 

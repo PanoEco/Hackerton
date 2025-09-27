@@ -1,1 +1,1 @@
-java -cp ../lib/* QuantumCodersBot.java >nul
+java -cp ../lib/* QuantumCodersBot1.java >nul
